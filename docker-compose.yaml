@@ -1,0 +1,72 @@
+version: '3.7'
+services:
+  db:
+    image: postgres:latest
+    container_name: booking_db
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    env_file:
+      - .env-non-dev
+    ports:
+      - 5432:5432
+
+  redis:
+    image: redis
+    container_name: booking_redis
+    ports:
+      - 6379:6379
+
+  booking:
+    container_name: booking_app
+    build:
+      context: .
+    env_file:
+      - .env-non-dev
+    command:
+      sh /booking/docker/app.sh
+    ports:
+      - 7777:8000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  celery:
+    container_name: booking_celery
+    build:
+      context: .
+    env_file:
+      - .env-non-dev
+    command:
+      sh -c "celery --app=app.tasks.celery_app:celery_app worker -l INFO"
+    depends_on:
+      - redis
+
+  celery_beat:
+    image: celery
+    container_name: booking_celery_beat
+    build:
+      context: .
+    env_file:
+      - .env-non-dev
+    command:
+      sh -c "celery --app=app.tasks.celery_app:celery_app worker -l INFO -B"
+    depends_on:
+      - redis
+
+  flower:
+    container_name: booking_flower
+    build:
+      context: .
+    env_file:
+      - .env-non-dev
+    command:
+      sh -c "celery --app=app.tasks.celery_app:celery_app flower"
+    depends_on:
+      - redis
+    ports:
+      - 5555:5555
